@@ -10,5 +10,6 @@ lazy val root = (project in file("."))
     name := "akka-stateful-streaming",
     libraryDependencies += Testing.scalaTest,
     libraryDependencies ++= Akka.all,
-    libraryDependencies ++= Logging.all
+    libraryDependencies ++= Logging.all,
+    libraryDependencies += Serialization.Spray
   )
