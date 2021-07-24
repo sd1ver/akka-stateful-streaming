@@ -2,7 +2,7 @@ package ru.neoflex.example.akka
 
 import akka.actor.ActorSystem
 import akka.actor.typed.scaladsl.adapter._
-import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityTypeKey}
+import akka.cluster.sharding.typed.scaladsl.{ ClusterSharding, Entity, EntityTypeKey }
 import akka.event.slf4j.SLF4JLogging
 import akka.kafka.ConsumerMessage.Committable
 import akka.kafka.ProducerMessage.Envelope
@@ -11,7 +11,7 @@ import akka.kafka.scaladsl.Committer
 import akka.stream.scaladsl.Keep
 import akka.util.Timeout
 import org.apache.kafka.clients.producer.ProducerRecord
-import ru.neoflex.example.akka.model.{AlertEvent, BankAlertSettings, CreditAccountIndicator}
+import ru.neoflex.example.akka.model.{ AlertEvent, BankAlertSettings, CreditAccountIndicator }
 import spray.json._
 
 import scala.concurrent.Await
@@ -72,22 +72,23 @@ object CreditHistoryProcessing extends SLF4JLogging with StreamSources {
   }
 
   def alertToEnvelope(committable: Committable)(alert: AlertEvent): Envelope[String, String, Committable] = {
-    val message              = alert.toJson.compactPrint
-    val record               = new ProducerRecord[String, String](alertTopic, message, alert.bankId)
+    val message = alert.toJson.compactPrint
+    val record  = new ProducerRecord[String, String](alertTopic, message, alert.bankId)
     ProducerMessage.single(record, committable)
   }
 
-
   private def calcAlerts(dataWithState: DataWithState): Either[Unit, AlertEvent] = {
     import dataWithState._
-    val isThresholdExceeded = state.flatMap(_.paymentThreshold).exists(_ > data.payment) ||
-      state.flatMap(_.overdueAmountThreshold).exists(_ > data.overdueAmount) ||
-      state.flatMap(_.debtAmountThreshold).exists(_ > data.debtAmount)
-    if (isThresholdExceeded) {
-      Right(AlertEvent(data.accountId, data.bankId, s"Threshold exceeded for $data"))
-    } else {
-      Left(())
-    }
+    val thresholdsWithIndicators = Seq(
+      state.flatMap(_.paymentThreshold)       -> data.payment,
+      state.flatMap(_.overdueAmountThreshold) -> data.overdueAmount,
+      state.flatMap(_.debtAmountThreshold)    -> data.debtAmount
+    )
+    thresholdsWithIndicators
+      .flatMap { case (threshold, value) => threshold.find(_ > value) }
+      .headOption
+      .map(_ => AlertEvent(data.accountId, data.bankId, s"Threshold exceeded for $data"))
+      .toRight(())
   }
 
 }
