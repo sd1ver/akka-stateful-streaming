@@ -14,7 +14,6 @@ import org.apache.kafka.clients.producer.ProducerRecord
 import ru.neoflex.example.akka.model.{AlertEvent, BankAlertSettings, CreditAccountIndicator}
 import spray.json._
 
-import scala.collection.immutable
 import scala.concurrent.Await
 import scala.concurrent.duration._
 object CreditHistoryProcessing extends SLF4JLogging with StreamSources {
@@ -43,7 +42,7 @@ object CreditHistoryProcessing extends SLF4JLogging with StreamSources {
     val indicatorsComplete = indicatorsSource
       .map(r => r.value.parseJson.convertTo[CreditAccountIndicator])
       .mapAsync(1)(stateInterractor.stateRequestAsync)
-      .mapConcat(calcAlerts)
+      .map(calcAlerts)
       .asSource
       .map(toEnvelope)
       .toMat(dataSink)(Keep.right)
@@ -64,22 +63,30 @@ object CreditHistoryProcessing extends SLF4JLogging with StreamSources {
     actorSystem.terminate()
   }
 
-  def toEnvelope(data: (AlertEvent, Committable)): Envelope[String, String, Committable] = {
-    val (alert, committable) = data
+  def toEnvelope(data: (Either[Unit, AlertEvent], Committable)): Envelope[String, String, Committable] = {
+    val (alertOrNone, committable) = data
+    alertOrNone.fold(
+      _ => ProducerMessage.passThrough(committable),
+      alertToEnvelope(committable)
+    )
+  }
+
+  def alertToEnvelope(committable: Committable)(alert: AlertEvent): Envelope[String, String, Committable] = {
     val message              = alert.toJson.compactPrint
     val record               = new ProducerRecord[String, String](alertTopic, message, alert.bankId)
     ProducerMessage.single(record, committable)
   }
 
-  private def calcAlerts(dataWithState: DataWithState): immutable.Seq[AlertEvent] = {
+
+  private def calcAlerts(dataWithState: DataWithState): Either[Unit, AlertEvent] = {
     import dataWithState._
     val isThresholdExceeded = state.flatMap(_.paymentThreshold).exists(_ > data.payment) ||
       state.flatMap(_.overdueAmountThreshold).exists(_ > data.overdueAmount) ||
       state.flatMap(_.debtAmountThreshold).exists(_ > data.debtAmount)
     if (isThresholdExceeded) {
-      immutable.Seq(AlertEvent(data.accountId, data.bankId, s"Threshold exceeded for $data"))
+      Right(AlertEvent(data.accountId, data.bankId, s"Threshold exceeded for $data"))
     } else {
-      immutable.Seq()
+      Left(())
     }
   }
 
