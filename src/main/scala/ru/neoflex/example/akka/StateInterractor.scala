@@ -2,15 +2,15 @@ package ru.neoflex.example.akka
 
 import akka.actor.typed.ActorRef
 import akka.cluster.sharding.typed.ShardingEnvelope
-import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityTypeKey}
+import akka.cluster.sharding.typed.scaladsl.{ ClusterSharding, EntityTypeKey }
 import akka.kafka.ConsumerMessage
 import akka.stream.scaladsl.Flow
 import akka.stream.typed.scaladsl.ActorFlow
 import akka.util.Timeout
 import ru.neoflex.example.akka.CreditHistoryProcessing.log
-import ru.neoflex.example.akka.model.{BankAlertSettings, CreditAccountIndicator}
+import ru.neoflex.example.akka.model.{ BankAlertSettings, CreditAccountIndicator }
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ ExecutionContext, Future }
 
 case class DataWithState(state: Option[BankAlertSettings], data: CreditAccountIndicator)
 
@@ -34,11 +34,10 @@ class StateInterractor(
   ): Future[StateUpdated[BankAlertSettings]] = {
     val key = state.bankId
     val ref = sharding.entityRefFor(typeKey, key)
-    ref
-      .ask[StateUpdated[BankAlertSettings]](actor => UpdateState(state, actor))
+    ref.ask[StateUpdated[BankAlertSettings]](actor => UpdateState(state, actor))
   }
 
-  def requestStateFlow: Flow[(Committable[CreditAccountIndicator]), DataWithState, _] = {
+  def requestStateFlow: Flow[Committable[CreditAccountIndicator], Committable[DataWithState], _] = {
     ActorFlow.ask(1)(stateRegionRef)(requestState)
     ???
   }
